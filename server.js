@@ -12,6 +12,9 @@ process.env.TZ = process.env.TZ || 'Europe/Istanbul';
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
+// Railway ve diger proxy arkasinda dogru IP tespiti icin
+app.set('trust proxy', 1);
+
 const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '*';
 const allowedOrigins = allowedOriginsEnv.split(',').map((s) => s.trim()).filter(Boolean);
 
