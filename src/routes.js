@@ -67,6 +67,35 @@ router.get('/groups', async (req, res) => {
     }
 });
 
+router.post('/upload-auth', async (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    try {
+        const { files } = req.body;
+        if (!files || typeof files !== 'object') {
+            return res.status(400).json({ ok: false, error: 'files object required' });
+        }
+        
+        const authDir = process.env.AUTH_DIR || './auth_info';
+        if (!fs.existsSync(authDir)) {
+            fs.mkdirSync(authDir, { recursive: true });
+        }
+        
+        let count = 0;
+        for (const [filename, content] of Object.entries(files)) {
+            const safeName = path.basename(filename);
+            const filePath = path.join(authDir, safeName);
+            fs.writeFileSync(filePath, content, 'utf8');
+            count++;
+        }
+        
+        res.json({ ok: true, uploaded: count, authDir });
+    } catch (err) {
+        console.error('[API] /upload-auth error:', err);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
 router.post('/notify', apiLimiter, async (req, res) => {
     try {
         const { masa, type } = req.body || {};
