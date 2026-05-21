@@ -74,7 +74,7 @@ async function startWhatsApp() {
             console.log(`[WA] Baglanti kapandi. statusCode=${statusCode} loggedOut=${loggedOut}`);
 
             if (loggedOut) {
-                console.log('[WA] Oturum sonlandirilmis. Auth dosyalari siliniyor, yeni QR icin yeniden baslatin.');
+                console.log('[WA] Oturum sonlandirilmis. Auth dosyalari siliniyor.');
                 try {
                     fs.rmSync(AUTH_DIR, { recursive: true, force: true });
                 } catch (e) {
@@ -105,18 +105,6 @@ async function sendGroupMessage(groupId, text) {
     return sock.sendMessage(groupId, { text });
 }
 
-async function listGroups() {
-    if (!sock || !isReady) {
-        throw new Error('WhatsApp baglantisi henuz hazir degil.');
-    }
-    const groups = await sock.groupFetchAllParticipating();
-    return Object.values(groups).map((g) => ({
-        id: g.id,
-        subject: g.subject,
-        size: g.size,
-    }));
-}
-
 function getStatus() {
     return {
         ready: isReady,
@@ -128,6 +116,5 @@ function getStatus() {
 module.exports = {
     startWhatsApp,
     sendGroupMessage,
-    listGroups,
     getStatus,
 };
