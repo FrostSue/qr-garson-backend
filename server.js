@@ -11,7 +11,7 @@ process.env.TZ = process.env.TZ || 'Europe/Istanbul';
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-// Railway ve diger reverse-proxy arkasinda dogru IP tespiti
+// Trust proxy for correct client IP detection behind reverse proxies like Railway
 app.set('trust proxy', 1);
 
 const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '*';
@@ -21,7 +21,7 @@ const corsOptions = {
     origin: (origin, callback) => {
         if (allowedOrigins.includes('*') || !origin) return callback(null, true);
         if (allowedOrigins.includes(origin)) return callback(null, true);
-        return callback(new Error(`CORS: ${origin} izinli degil.`));
+        return callback(new Error(`CORS: ${origin} is not allowed.`));
     },
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'X-Upload-Secret'],
@@ -37,26 +37,26 @@ app.use('/api', apiRouter);
 
 app.get('/', (req, res) => {
     res.json({
-        name: 'QR Garson Cagirma API',
+        name: 'QR Waiter Calling API',
         version: '2.0.0',
         endpoints: ['/api/health', 'POST /api/notify'],
     });
 });
 
-// Merkezi hata yoneticisi
+// Centralized error handler
 app.use((err, req, res, next) => {
     console.error('[ERR]', err.message);
-    res.status(500).json({ ok: false, error: 'Sunucu hatasi.' });
+    res.status(500).json({ ok: false, error: 'Internal server error.' });
 });
 
 app.listen(PORT, () => {
-    console.log(`[HTTP] Sunucu :${PORT} portunda calisiyor`);
-    console.log(`[HTTP] Saat dilimi: ${process.env.TZ}`);
-    console.log(`[HTTP] Izinli kaynaklar: ${allowedOriginsEnv}`);
+    console.log(`[HTTP] Server is running on port :${PORT}`);
+    console.log(`[HTTP] Timezone: ${process.env.TZ}`);
+    console.log(`[HTTP] Allowed origins: ${allowedOriginsEnv}`);
 });
 
 startWhatsApp().catch((err) => {
-    console.error('[WA] Baslatma hatasi:', err);
+    console.error('[WA] Initialization error:', err);
 });
 
 process.on('uncaughtException', (e) => console.error('[uncaughtException]', e));
