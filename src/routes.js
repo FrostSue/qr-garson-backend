@@ -2,15 +2,31 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const path = require('path');
-const { sendGroupMessage, getStatus } = require('./whatsapp');
+const { sendGroupMessage, getStatus, getGroups } = require('./whatsapp');
 
 const router = express.Router();
 
 const COOLDOWN_SECONDS = parseInt(process.env.COOLDOWN_SECONDS || '60', 10);
 const GROUP_ID = process.env.WHATSAPP_GROUP_ID || '';
 const UPLOAD_SECRET = process.env.UPLOAD_SECRET || '';
+const TARGET_LAT = parseFloat(process.env.TARGET_LAT || '41.2505');
+const TARGET_LNG = parseFloat(process.env.TARGET_LNG || '29.0205');
+const ALLOWED_RADIUS = parseInt(process.env.ALLOWED_RADIUS_METERS || '250', 10);
 
 const lastRequestMap = new Map();
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371e3;
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+    const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+              Math.cos(phi1) * Math.cos(phi2) *
+              Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
 
 const VALID_TYPES = {
     garson: 'Garson Cagiriyor',
@@ -65,9 +81,23 @@ router.get('/health', (req, res) => {
 });
 
 // ─── POST /api/notify ────────────────────────────────────────────────────────
+router.get('/groups', async (req, res) => {
+    try {
+        const secret = req.headers['x-upload-secret'] || req.query.secret;
+        if (!UPLOAD_SECRET || secret !== UPLOAD_SECRET) {
+            return res.status(401).json({ ok: false, error: 'Yetkisiz.' });
+        }
+        const groups = await getGroups();
+        return res.json({ ok: true, groups });
+    } catch (err) {
+        console.error('[API] /groups hata:', err);
+        return res.status(500).json({ ok: false, error: 'Sunucu hatasi.' });
+    }
+});
+
 router.post('/notify', apiLimiter, notifyLimiter, async (req, res) => {
     try {
-        const { masa, type } = req.body || {};
+        const { masa, type, lat, lng } = req.body || {};
 
         if (!masa || (typeof masa !== 'string' && typeof masa !== 'number')) {
             return res.status(400).json({ ok: false, error: 'Masa numarasi gerekli.' });
@@ -83,6 +113,21 @@ router.post('/notify', apiLimiter, notifyLimiter, async (req, res) => {
             return res.status(400).json({ ok: false, error: 'Gecersiz istek turu. (garson | hesap)' });
         }
 
+        if (!lat || !lng) {
+            return res.status(400).json({ ok: false, error: 'Konum bilgisi gerekli.' });
+        }
+
+        const clientLat = parseFloat(lat);
+        const clientLng = parseFloat(lng);
+        if (isNaN(clientLat) || isNaN(clientLng)) {
+            return res.status(400).json({ ok: false, error: 'Gecersiz konum bilgisi.' });
+        }
+
+        const distance = calculateDistance(clientLat, clientLng, TARGET_LAT, TARGET_LNG);
+        if (distance > ALLOWED_RADIUS) {
+            return res.status(403).json({ ok: false, error: 'Restoran disindan bildirim gonderilemez.' });
+        }
+
         if (!GROUP_ID) {
             return res.status(500).json({ ok: false, error: 'Sunucu yapilandirilmamis: WHATSAPP_GROUP_ID eksik.' });
         }
@@ -92,7 +137,6 @@ router.post('/notify', apiLimiter, notifyLimiter, async (req, res) => {
             return res.status(503).json({ ok: false, error: 'WhatsApp baglantisi hazir degil. Lutfen birkac saniye sonra tekrar deneyin.' });
         }
 
-        // Sunucu tarafli cooldown
         const now = Date.now();
         const last = lastRequestMap.get(masaStr) || 0;
         const elapsed = (now - last) / 1000;
