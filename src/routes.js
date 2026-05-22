@@ -38,7 +38,7 @@ const apiLimiter = rateLimit({
     max: 30,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { ok: false, error: 'Cok fazla istek. Lutfen biraz bekleyin.' },
+    message: { ok: false, error: 'Too many requests. Please wait a bit.' },
 });
 
 const notifyLimiter = rateLimit({
@@ -46,7 +46,7 @@ const notifyLimiter = rateLimit({
     max: 10,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { ok: false, error: 'Cok fazla bildirim istegi. Lutfen bekleyin.' },
+    message: { ok: false, error: 'Too many notification requests. Please wait.' },
 });
 
 function formatTrTime(date = new Date()) {
@@ -81,13 +81,13 @@ router.get('/groups', async (req, res) => {
     try {
         const secret = req.headers['x-upload-secret'] || req.query.secret;
         if (!UPLOAD_SECRET || secret !== UPLOAD_SECRET) {
-            return res.status(401).json({ ok: false, error: 'Yetkisiz.' });
+            return res.status(401).json({ ok: false, error: 'Unauthorized.' });
         }
         const groups = await getGroups();
         return res.json({ ok: true, groups });
     } catch (err) {
         console.error('[API] /groups error:', err);
-        return res.status(500).json({ ok: false, error: 'Sunucu hatasi.' });
+        return res.status(500).json({ ok: false, error: 'Internal server error.' });
     }
 });
 
@@ -96,41 +96,41 @@ router.post('/notify', apiLimiter, notifyLimiter, async (req, res) => {
         const { masa, type, lat, lng } = req.body || {};
 
         if (!masa || (typeof masa !== 'string' && typeof masa !== 'number')) {
-            return res.status(400).json({ ok: false, error: 'Masa numarasi gerekli.' });
+            return res.status(400).json({ ok: false, error: 'Table number is required.' });
         }
 
         const masaStr = String(masa).trim().slice(0, 16);
         if (!/^[A-Za-z0-9\-_]+$/.test(masaStr)) {
-            return res.status(400).json({ ok: false, error: 'Gecersiz masa numarasi.' });
+            return res.status(400).json({ ok: false, error: 'Invalid table number.' });
         }
 
         const istek = VALID_TYPES[type];
         if (!istek) {
-            return res.status(400).json({ ok: false, error: 'Gecersiz istek turu. (garson | hesap)' });
+            return res.status(400).json({ ok: false, error: 'Invalid request type (must be garson or hesap).' });
         }
 
         if (!lat || !lng) {
-            return res.status(400).json({ ok: false, error: 'Konum bilgisi gerekli.' });
+            return res.status(400).json({ ok: false, error: 'Location information is required.' });
         }
 
         const clientLat = parseFloat(lat);
         const clientLng = parseFloat(lng);
         if (isNaN(clientLat) || isNaN(clientLng)) {
-            return res.status(400).json({ ok: false, error: 'Gecersiz konum bilgisi.' });
+            return res.status(400).json({ ok: false, error: 'Invalid location information.' });
         }
 
         const distance = calculateDistance(clientLat, clientLng, TARGET_LAT, TARGET_LNG);
         if (distance > ALLOWED_RADIUS) {
-            return res.status(403).json({ ok: false, error: 'Restoran disindan bildirim gonderilemez.' });
+            return res.status(403).json({ ok: false, error: 'Notifications cannot be sent from outside the restaurant.' });
         }
 
         if (!GROUP_ID) {
-            return res.status(500).json({ ok: false, error: 'Sunucu yapilandirilmamis: WHATSAPP_GROUP_ID eksik.' });
+            return res.status(500).json({ ok: false, error: 'Server not configured: WHATSAPP_GROUP_ID is missing.' });
         }
 
         const status = getStatus();
         if (!status.ready) {
-            return res.status(503).json({ ok: false, error: 'WhatsApp baglantisi hazir degil. Lutfen birkac saniye sonra tekrar deneyin.' });
+            return res.status(503).json({ ok: false, error: 'WhatsApp connection is not ready. Please try again in a few seconds.' });
         }
 
         const now = Date.now();
@@ -140,7 +140,7 @@ router.post('/notify', apiLimiter, notifyLimiter, async (req, res) => {
             const remaining = Math.ceil(COOLDOWN_SECONDS - elapsed);
             return res.status(429).json({
                 ok: false,
-                error: `Lutfen ${remaining} saniye sonra tekrar deneyin.`,
+                error: `Please try again in ${remaining} seconds.`,
                 cooldownRemaining: remaining,
             });
         }
@@ -151,30 +151,30 @@ router.post('/notify', apiLimiter, notifyLimiter, async (req, res) => {
 
         return res.json({
             ok: true,
-            message: 'Bildirim gonderildi.',
+            message: 'Notification sent.',
             cooldownSeconds: COOLDOWN_SECONDS,
         });
     } catch (err) {
         console.error('[API] /notify error:', err);
-        return res.status(500).json({ ok: false, error: 'Sunucu hatasi.' });
+        return res.status(500).json({ ok: false, error: 'Internal server error.' });
     }
 });
 
 router.post('/upload-auth', (req, res, next) => {
     if (!UPLOAD_SECRET) {
-        return res.status(403).json({ ok: false, error: 'Upload endpoint devre disi. UPLOAD_SECRET tanimlanmamis.' });
+        return res.status(403).json({ ok: false, error: 'Upload endpoint is disabled. UPLOAD_SECRET is not configured.' });
     }
     const secret = req.headers['x-upload-secret'];
     if (!secret || secret !== UPLOAD_SECRET) {
         console.warn('[API] /upload-auth unauthorized access attempt');
-        return res.status(401).json({ ok: false, error: 'Yetkisiz.' });
+        return res.status(401).json({ ok: false, error: 'Unauthorized.' });
     }
     next();
 }, async (req, res) => {
     try {
         const { files } = req.body;
         if (!files || typeof files !== 'object' || Array.isArray(files)) {
-            return res.status(400).json({ ok: false, error: 'files objesi gerekli.' });
+            return res.status(400).json({ ok: false, error: 'files object is required.' });
         }
 
         const authDir = process.env.AUTH_DIR || path.join(__dirname, '..', 'auth_info');
@@ -193,7 +193,7 @@ router.post('/upload-auth', (req, res, next) => {
         res.json({ ok: true, uploaded: count, authDir });
     } catch (err) {
         console.error('[API] /upload-auth error:', err);
-        res.status(500).json({ ok: false, error: 'Sunucu hatasi.' });
+        res.status(500).json({ ok: false, error: 'Internal server error.' });
     }
 });
 
