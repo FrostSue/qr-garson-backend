@@ -33,7 +33,6 @@ const VALID_TYPES = {
     hesap: 'Hesap Istiyor',
 };
 
-// Genel rate limiter — dakikada 30 istek
 const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 30,
@@ -42,7 +41,6 @@ const apiLimiter = rateLimit({
     message: { ok: false, error: 'Cok fazla istek. Lutfen biraz bekleyin.' },
 });
 
-// Notify icin daha siki limiter — IP basina dakikada 10 istek
 const notifyLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 10,
@@ -70,7 +68,6 @@ function buildMessage({ masa, istek }) {
     ].join('\n');
 }
 
-// ─── GET /api/health ────────────────────────────────────────────────────────
 router.get('/health', (req, res) => {
     res.json({
         ok: true,
@@ -80,7 +77,6 @@ router.get('/health', (req, res) => {
     });
 });
 
-// ─── POST /api/notify ────────────────────────────────────────────────────────
 router.get('/groups', async (req, res) => {
     try {
         const secret = req.headers['x-upload-secret'] || req.query.secret;
@@ -90,7 +86,7 @@ router.get('/groups', async (req, res) => {
         const groups = await getGroups();
         return res.json({ ok: true, groups });
     } catch (err) {
-        console.error('[API] /groups hata:', err);
+        console.error('[API] /groups error:', err);
         return res.status(500).json({ ok: false, error: 'Sunucu hatasi.' });
     }
 });
@@ -159,21 +155,18 @@ router.post('/notify', apiLimiter, notifyLimiter, async (req, res) => {
             cooldownSeconds: COOLDOWN_SECONDS,
         });
     } catch (err) {
-        console.error('[API] /notify hata:', err);
+        console.error('[API] /notify error:', err);
         return res.status(500).json({ ok: false, error: 'Sunucu hatasi.' });
     }
 });
 
-// ─── POST /api/upload-auth ──────────────────────────────────────────────────
-// Yerel auth dosyalarini Railway'e yukler.
-// UPLOAD_SECRET env degiskeni ile korunur — bos birakilirsa endpoint kapali.
 router.post('/upload-auth', (req, res, next) => {
     if (!UPLOAD_SECRET) {
         return res.status(403).json({ ok: false, error: 'Upload endpoint devre disi. UPLOAD_SECRET tanimlanmamis.' });
     }
     const secret = req.headers['x-upload-secret'];
     if (!secret || secret !== UPLOAD_SECRET) {
-        console.warn('[API] /upload-auth yetkisiz erisim denemesi');
+        console.warn('[API] /upload-auth unauthorized access attempt');
         return res.status(401).json({ ok: false, error: 'Yetkisiz.' });
     }
     next();
@@ -191,7 +184,6 @@ router.post('/upload-auth', (req, res, next) => {
 
         let count = 0;
         for (const [filename, content] of Object.entries(files)) {
-            // Path traversal koruması — sadece dosya adı al, klasör yolu kabul etme
             const safeName = path.basename(filename);
             if (!safeName.endsWith('.json')) continue;
             fs.writeFileSync(path.join(authDir, safeName), content, 'utf8');
@@ -200,12 +192,11 @@ router.post('/upload-auth', (req, res, next) => {
 
         res.json({ ok: true, uploaded: count, authDir });
     } catch (err) {
-        console.error('[API] /upload-auth hata:', err);
+        console.error('[API] /upload-auth error:', err);
         res.status(500).json({ ok: false, error: 'Sunucu hatasi.' });
     }
 });
 
-// Cooldown map temizleme
 setInterval(() => {
     const now = Date.now();
     const ttl = COOLDOWN_SECONDS * 1000 * 4;
